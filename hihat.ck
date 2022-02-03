@@ -5,7 +5,7 @@
 // mix: set reverb mix level
 // connect: attach to specified ugen
 // help: print function & arg explanations
-// trigger: [private] play sample at specified dur & gain;
+// trigger: [private] play sample at specified dur & gain
 // algo(dur, int): beats of randomized triplets or n8/n16/n32 patterns
 // algo(dur, int, int): + specify triplets on/off
 // algo(dur, int, int, float[5]): + specify probability splits between rhythms
@@ -59,7 +59,11 @@ public class HH
         for (j; j < beats; j++)
         {
             0 => hBuf.pos;
-            baseGain + (j * 0.1) => float gainFunc;
+            float gainFunc;
+            if (baseGain > 0)
+            {
+                baseGain + (j * 0.1) => gainFunc;
+            }
             
             // choose between triplets vs. n8/n16/n32
             Math.random2(0,1) => int triplets;
@@ -132,7 +136,11 @@ public class HH
         for (j; j < beats; j++)
         {
             0 => hBuf.pos;
-            baseGain + (j * 0.1) => float gainFunc;
+            float gainFunc;
+            if (baseGain > 0)
+            {
+                baseGain + (j * 0.1) => gainFunc;
+            }
             
             // choose between triplets vs. n8/n16/n32
             1.0 / 6.0 => float t;
@@ -205,7 +213,11 @@ public class HH
         for (j; j < beats; j++)
         {
             0 => hBuf.pos;
-            baseGain + (j * 0.1) => float gainFunc;
+            float gainFunc;
+            if (baseGain > 0)
+            {
+                baseGain + (j * 0.1) => gainFunc;
+            }
             
             // choose between triplets vs. n8/n16/n32
             1.0 / 6.0 => float t;

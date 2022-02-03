@@ -5,7 +5,8 @@
 // mix: set reverb mix level
 // connect: attach to specified ugen
 // help: print function & arg explanations
-// trigger: [private] play sample at specified dur & gain;
+// trigger: [private] play sample at specified dur & gain
+// constrainedRandom: [private] don't randomize gain when gain <= 0
 // randomStyle: switch between different styles every X reps
 // algo(dur, int, string): 3 styles of beats
 // algo(dur, int, string, float[2]): + specify probability splits
@@ -52,6 +53,18 @@ public class KK
         len::T => now;
     }
     
+    private float constrainedRandom(float g, float lowAdjust, float highAdjust)
+    {
+        if (g <= 0)
+        {
+            return 0.0;
+        }
+        else
+        {
+            return Math.random2f(g + lowAdjust, g + highAdjust);
+        }
+    }
+    
     public void randomStyle(dur T, int beats, int rep)
     {
         currentRep++;
@@ -93,11 +106,11 @@ public class KK
             {
                 if (i == 0)
                 {
-                    trigger(T, 1, baseGain + 0.2);
+                    trigger(T, 1, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
             }
         }
@@ -127,19 +140,19 @@ public class KK
             {
                 if (i == 0)
                 {
-                    trigger(T, 2, baseGain + 0.2);
+                    trigger(T, 2, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
                     Math.randomf() => float choice;
                     if (choice < 0.8)
                     {
-                        trigger(T, 2, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                        trigger(T, 2, constrainedRandom(baseGain, -0.1, 0.1));
                     }
                     else
                     {
-                        trigger(T, 1.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                        trigger(T, 0.5, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                        trigger(T, 1.5, constrainedRandom(baseGain, -0.1, 0.1));
+                        trigger(T, 0.5, constrainedRandom(baseGain, -0.3, -0.2));
                     }
                 }
             }
@@ -150,12 +163,12 @@ public class KK
                 Math.randomf() => float choice;
                 if (choice < 0.6)
                 {
-                    trigger(T, 3, baseGain + 0.2);
+                    trigger(T, 3, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
-                    trigger(T, 2, baseGain + 0.2);
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 2, constrainedRandom(baseGain, 0.2, 0.2));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
             }
         }
@@ -176,8 +189,8 @@ public class KK
             
             for (int i; i < sync; i++)
             {
-                trigger(T, 1.5, baseGain + 0.2);
-                trigger(T, 1.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                trigger(T, 1.5, constrainedRandom(baseGain, 0.2, 0.2));
+                trigger(T, 1.5, constrainedRandom(baseGain, -0.1, 0.1));
             }
             
             for (int j; j < straight; j++)
@@ -185,17 +198,17 @@ public class KK
                 Math.randomf() => float choice;
                 if (choice < 0.5) 
                 {
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
                 else if (choice < 0.75)
                 {
-                    trigger(T, 0.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                    trigger(T, 0.5, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                    trigger(T, 0.5, constrainedRandom(baseGain, -0.1, 0.1));
+                    trigger(T, 0.5, constrainedRandom(baseGain, -0.3, -0.2));
                 }
                 else
                 {
-                    trigger(T, 0.75, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                    trigger(T, 0.25, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                    trigger(T, 0.75, constrainedRandom(baseGain, -0.1, 0.1));
+                    trigger(T, 0.25, constrainedRandom(baseGain, -0.3, -0.2));
                 }
             }
         } 
@@ -213,11 +226,11 @@ public class KK
             {
                 if (i == 0)
                 {
-                    trigger(T, 1, baseGain + 0.2);
+                    trigger(T, 1, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
             }
         }
@@ -247,19 +260,19 @@ public class KK
             {
                 if (i == 0)
                 {
-                    trigger(T, 2, baseGain + 0.2);
+                    trigger(T, 2, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
                     Math.randomf() => float choice;
                     if (choice < prob[0])
                     {
-                        trigger(T, 2, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                        trigger(T, 2, constrainedRandom(baseGain, -0.1, 0.1));
                     }
                     else
                     {
-                        trigger(T, 1.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                        trigger(T, 0.5, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                        trigger(T, 1.5, constrainedRandom(baseGain, -0.1, 0.1));
+                        trigger(T, 0.5, constrainedRandom(baseGain, -0.3, -0.2));
                     }
                 }
             }
@@ -270,12 +283,12 @@ public class KK
                 Math.randomf() => float choice;
                 if (choice < prob[1])
                 {
-                    trigger(T, 3, baseGain + 0.2);
+                    trigger(T, 3, constrainedRandom(baseGain, 0.2, 0.2));
                 }
                 else
                 {
-                    trigger(T, 2, baseGain + 0.2);
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 2, constrainedRandom(baseGain, 0.2, 0.2));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
             }
         }
@@ -296,8 +309,8 @@ public class KK
             
             for (int i; i < sync; i++)
             {
-                trigger(T, 1.5, baseGain + 0.2);
-                trigger(T, 1.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                trigger(T, 1.5, constrainedRandom(baseGain, 0.2, 0.2));
+                trigger(T, 1.5, constrainedRandom(baseGain, -0.1, 0.1));
             }
             
             for (int j; j < straight; j++)
@@ -305,17 +318,17 @@ public class KK
                 Math.randomf() => float choice;
                 if (choice < prob[0]) 
                 {
-                    trigger(T, 1, Math.random2f(baseGain - 0.1, baseGain + 0.1));
+                    trigger(T, 1, constrainedRandom(baseGain, -0.1, 0.1));
                 }
                 else if (choice < prob[1])
                 {
-                    trigger(T, 0.5, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                    trigger(T, 0.5, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                    trigger(T, 0.5, constrainedRandom(baseGain, -0.1, 0.1));
+                    trigger(T, 0.5, constrainedRandom(baseGain, -0.3, -0.2));
                 }
                 else
                 {
-                    trigger(T, 0.75, Math.random2f(baseGain - 0.1, baseGain + 0.1));
-                    trigger(T, 0.25, Math.random2f(baseGain - 0.3, baseGain - 0.2));
+                    trigger(T, 0.75, constrainedRandom(baseGain, -0.1, 0.1));
+                    trigger(T, 0.25, constrainedRandom(baseGain, -0.3, -0.2));
                 }
             }
         } 
