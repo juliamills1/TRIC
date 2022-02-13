@@ -1,7 +1,7 @@
 // class definition for the bb instrument
 
 // METHODS:
-// gain: set buffer gain level
+// gain: set oscillator gain level
 // mix: set reverb mix level
 // connect: attach to specified ugen
 // help: print function & arg explanations

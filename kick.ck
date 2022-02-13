@@ -127,7 +127,7 @@ public class KK
                 else
                 {
                     (beats / 2) - (beats % 2) => full;
-                    1 => rem;
+                    beats % 2 => rem;
                 }
             }
             else
