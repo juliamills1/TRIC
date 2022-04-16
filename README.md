@@ -50,6 +50,8 @@ NOTE: the way it is currently set up in Chuck, the duration and number of beats 
 To run TRIC audio, use <code>chuck tri.ck</code>. To run the conscience log,
 use <code>chuck conscience.ck</code> in another terminal.
 
+For demos and more, visit <href>https://ccrma.stanford.edu/~jjmills/220b/final/index.html</href>
+
 -------------
 <h3>Slated feature requests</h3>
 <li>Output state changes to .txt</li>
