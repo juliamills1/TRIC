@@ -6,6 +6,11 @@ From the moment the user runs the program,
         most specific, the instruments can be locked to a consistent rhythm or
         pitch. At their least specific, they play along randomly but coherently.
 
+The system also comes with an optional "conscience" log, the personification of TRIC.
+        All input into the audio-side terminal results in feedback, either a
+        description of the parsed command, waiting message, specialized tempo
+        change reactions, or an error response.
+
 There are five instruments: HH (hi-hat), CC (clap), KK (kick), BB (bass), and AA
         (arpeggiator). Each have four main functions:
         <li>gain(float): change instrument gain</li>
@@ -42,13 +47,18 @@ NOTE: the way it is currently set up in Chuck, the duration and number of beats 
         and hi-hat tacet.
 
 -------------
-To run the program, use <code>chuck tri.ck</code>
+To run TRIC audio, use <code>chuck tri.ck</code>. To run the conscience log,
+use <code>chuck conscience.ck</code> in another terminal.
 
 -------------
-<h3>Slated feature requests/bugs to handle</h3>
+<h3>Slated feature requests</h3>
 <li>Output state changes to .txt</li>
-<li>Allow for real-time presets.txt changes</li>
 <li>Poly synth stab instrument</li>
 <li>Improve terminal.ck efficiency</li>
+<li>All classes extending tricClass parent</li>
 <li>Loop independence from kick loop length</li>
-<li>Fix hi-hat triplet randomization</li>
+<li>Add lilypond rhythm input mode: a separate function from algo() for all
+    instruments in which lilypond notation is parsed as rhythmic input (e.g. n4d
+    n4d r4 = two dotted quarter notes and a quarter rest); would allow for switching
+    between algo() and tutti sections</li>
+<li>Infrastructure for multiple AA instantiations created on the fly</li>

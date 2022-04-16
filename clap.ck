@@ -4,28 +4,31 @@
 // gain: set buffer gain level
 // mix: set reverb mix level
 // connect: attach to specified ugen
+// changeFile: read new file as the instrument sample
 // help: print function & arg explanations
 // trigger: [private] play sample at specified dur & gain
 // constrainedRandom: [private] don't randomize gain when gain <= 0
 // randomStyle: switch between different styles every X reps
 // algo(dur T, int x, string style, float splits[4])
 
-public class CC
+public class CC extends RanDrum
 {
     SndBuf cBuf => NRev cn;
-    me.dir() + "808_Clap.wav" => cBuf.read;
+    "808_Clap.wav" => sample => tempSample;
+    me.dir() + sample => cBuf.read;
     
     // default settings
-    0.7 => float g; 
-    0.02 => float rev;
-    0.8::second => dur len;
-    4 => int beats;
-    "backbeat" => string style;
-    [0.8, 0.8, 0.5, 0.3] @=> float splits[];
-    2 => int reps;
-    
-    0 => int currentRep;
-    0 => int styleNum;
+    "cc" => id;
+    0.7 => g => tempGain;
+    0.02 => rev;
+    0.8::second => len;
+    4 => beats;
+    "backbeat" => style;
+    [0.8, 0.8, 0.5, 0.3] @=> splits;
+    2 => reps;
+    0 => currentRep;
+    0 => styleNum;
+    0 => randomOn;
     
     g => cBuf.gain;
     rev => cn.mix;
@@ -45,12 +48,23 @@ public class CC
         cn => ugen; 
     }
     
+    public void changeFile(string str)
+    {
+        if (str != sample)
+        {
+            me.dir() + str => cBuf.read;
+        }
+        
+        str => sample;
+    }
+    
     public void help()
     {
         <<<"CC has the following functions:">>>;
         <<<"gain(float): sets gain">>>;
         <<<"mix(float): sets reverb level">>>;
         <<<"connect(UGen): connects CC to other Chuck UGens">>>;
+        <<<"changeFile(string): reads new file as instrument sample">>>;
         <<<"randomStyle(dur, int, int y): randomly re-pick a style every y measures">>>;
         <<<"algo(dur T, int x, string style, float splits[4])">>>;
         <<<"Generate x beats of dur T in specified style: backbeat, doubletime, or sync">>>;

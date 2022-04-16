@@ -1,11 +1,12 @@
 // terminal input reader
 ConsoleInput in;
 StringTokenizer tok;
+Parser ps;
+FileIO sampleChecker;
 
 // presets reader
 FileIO fio;
 me.dir() + "presets.txt" => string pFile;
-fio.open(pFile, FileIO.READ);
 StringTokenizer pTok;
 string presets[0];
 
@@ -17,25 +18,31 @@ HH hihat;
 KK kick;
 
 // synchronize to period
-.8::second => dur T;
+0.7::second => dur T;
 T - (now % T) => now;
 Gain g => dac;
 T => arp.len => bass.len => hihat.len => clap.len => kick.len;
 
-// synth modes
-"" => string lastArpScaleType;
--1 => int lastArpScaleNum;
-"" => string lastBassScaleType;
--1 => int lastBassScaleNum;
-
+// intra-loop value placeholders
+"" => string lastArpScaleType => string lastBassScaleType;
+-1 => int lastArpScaleNum => int lastBassScaleNum;
+"sin" => string arpOsc;
+"tri" => string bassOsc;
 hihat.g => float hhGain;
-0 => hihat.triplets;
+hihat.sample => string hhSamp;
 
-clap.g => float clapGain;
-0 => int clapRandomOn;
-
-kick.g => float kickGain;
-0 => int kickRandomOn;
+// musical statement starting values
+10 => arp.scaleNum => bass.scaleNum;
+"eth" => arp.scaleType => bass.scaleType;
+"sync" => clap.style;
+"club" => kick.style;
+0 => hhGain => arp.g => clap.tempGain => bass.g => kick.g => kick.tempGain => hihat.triplets;
+arp.gain(arp.g);
+bass.gain(bass.g);
+hihat.gain(hhGain);
+clap.gain(clap.tempGain);
+kick.gain(kick.tempGain);
+0.11::second => now;
 
 // send instruments' output to dac
 arp.connect(g);
@@ -44,25 +51,39 @@ clap.connect(g);
 hihat.connect(g);
 kick.connect(g);
 
-// TO DO: allow for preset changes on the fly
-loadPresets();
+// OSC settings
+"localhost" => string hostname;
+1234 => int port;
+OscOut xmit;
+xmit.dest(hostname, port);
+string lastInst;
+string lastCommand;
+int errorFlag;
+
 spork ~ messageListen();
 
 while (true)
 {
-    // send all gain and reverb level edits
+    sendOSC(1, durToString(kick.len), Std.itoa(kick.beats));
+    
+    // send all top-of-loop edits
     arp.gain(arp.g);
     arp.mix(arp.rev);
+    arp.changeOsc(arpOsc);
     bass.gain(bass.g);
     bass.mix(bass.rev);
+    bass.changeOsc(bassOsc);
     hihat.gain(hhGain);
     hihat.mix(hihat.rev);
-    clap.gain(clapGain);
+    hihat.changeFile(hhSamp);
+    clap.gain(clap.tempGain);
     clap.mix(clap.rev);
-    kick.gain(kickGain);
+    clap.changeFile(clap.tempSample);
+    kick.gain(kick.tempGain);
     kick.mix(kick.rev);
+    kick.changeFile(kick.tempSample);
     
-    // apply changes to synth scales
+    // send changes to synth scales
     if (arp.scaleNum != lastArpScaleNum || arp.scaleType != lastArpScaleType)
     {
         arp.mode(arp.scaleType, arp.scaleNum);
@@ -76,13 +97,13 @@ while (true)
         bass.scaleType => lastBassScaleType;
     }
     
+    // spork next beat
     spork ~ arp.algo(arp.len, arp.beats, arp.tonic, arp.cycle, arp.direction, arp.pitchClasses);
     spork ~ bass.algo(bass.len, bass.beats, bass.tonic, bass.pitchClasses, bass.addOctaves);
-    // TO DO: hihat triplets are not properly randomized - make arg probability, not toggle
     spork ~ hihat.algo(hihat.len, hihat.beats, hihat.triplets, hihat.splits);
     
     // spork relevant clap function
-    if (clapRandomOn == 0)
+    if (clap.randomOn == 0)
     {
         spork ~ clap.algo(clap.len, clap.beats, clap.style, clap.splits);
     }
@@ -92,7 +113,7 @@ while (true)
     }
     
     // spork relevant kick function
-    if (kickRandomOn == 0)
+    if (kick.randomOn == 0)
     {
         kick.algo(kick.len, kick.beats, kick.style, kick.splits);
     }
@@ -102,30 +123,13 @@ while (true)
     }
 }
 
-// parse presets file into array of commands
-fun void loadPresets()
-{
-    // check file is parseable
-    if (!fio.good())
-    {
-        cherr <= "can't open file: " <= pFile <= " for reading..."
-              <= IO.newline();
-        me.exit();
-    }
-    
-    // send each line of file to array slot
-    while (fio.more())
-    {
-        presets << fio.readLine();
-    }
-}
-
 // get input from terminal
 fun void messageListen()
 {
     while (true)
     {
         in.prompt("enter command:") => now;
+        
 
         while (in.more())
         {
@@ -137,22 +141,34 @@ fun void messageListen()
     }
 }
 
+fun void sendOSC(int mode, string i, string c)
+{
+    xmit.start("log");
+    xmit.add(mode);
+    xmit.add(i);
+    xmit.add(c);
+    xmit.send();
+}
+
 // send command info to corresponding instrument(s)
 fun void commandRouter(string instIn, string command)
 {
     instIn.upper() => string inst;
+    sendOSC(0, inst, command);
     
     if (inst == "P")
     {
+        // remove from start of OSC queue
+        sendOSC(2, "", "");
         sendPreset(command);
     }
     else if (inst == "G")
     {
         sendAAEdit(command);
         sendBBEdit(command);
-        sendCCEdit(command);
         sendHHEdit(command);
-        sendKKEdit(command);
+        sendRanDrumEdit(clap, command);
+        sendRanDrumEdit(kick, command);
     }
     else if (inst == "S")
     {
@@ -161,9 +177,9 @@ fun void commandRouter(string instIn, string command)
     }
     else if (inst == "D")
     {
-        sendCCEdit(command);
         sendHHEdit(command);
-        sendKKEdit(command);
+        sendRanDrumEdit(clap, command);
+        sendRanDrumEdit(kick, command);
     }
     else if (inst == "AA")
     {
@@ -175,7 +191,7 @@ fun void commandRouter(string instIn, string command)
     }
     else if (inst == "CC")
     {
-        sendCCEdit(command);
+        sendRanDrumEdit(clap, command);
     }
     else if (inst == "HH")
     {
@@ -183,288 +199,21 @@ fun void commandRouter(string instIn, string command)
     }
     else if (inst == "KK")
     {
-        sendKKEdit(command);
+        sendRanDrumEdit(kick, command);
+    }
+    else 
+    {
+        <<<"Instrument or group not found">>>;
+        sendOSC(2, "", "");
     }
 }
 
-// return function name
-fun string funcParser(string command)
-{
-    if (command == "")
-    {
-        <<<"Cannot find a command">>>;
-        return "";
-    }
-    
-    string funcName;
-    command.find('(') => int fp;
-    command.lower() => command;
-    
-    // check for parentheses
-    if (fp == -1)
-    {
-        if (command == "help" || command == "modehelp")
-        {
-            // no arguments required
-            return command;
-        }
-        else
-        {
-            <<<"Argument(s) required or function does not exist!">>>;
-            return "";
-        }
-    }
-    else
-    {
-        // return string up to first parentheses
-        command.substring(0, fp) => funcName;
-    }
-    return funcName;
-}
-
-// return array of arguments from input
-fun string[] argParser(string command)
-{
-    // find argument list boundaries
-    command.find('(') => int fp;
-    command.find(')') => int sp;
-    
-    // look for any sub-arrays
-    command.find('[') => int fb;
-    command.find(']') => int sb;
-    string subArray;
-    int subArrayIndex;
-    
-    // if there is a sub-array
-    if (fb != -1 && sb != -1)
-    {
-        // transfer sub-array contents to new string & replace with placeholder
-        command.substring(fb + 1, sb - fb - 1) => subArray;
-        command.replace(fb, sb - fb + 1, "subArray");
-    }
-    else if (fb != -1 && sb == -1)
-    {
-        <<<"Incomplete sub-array: skipping this argument and any following">>>;
-        "-" => subArray;
-        command.replace(fb, command.length() - fb, "-");
-    }
-    else if (sb != -1 && fb == -1)
-    {
-        <<<"Incomplete sub-array: erasing bracket & assuming all single value arguments">>>;
-        command.erase(sb, 1);
-    }
-
-    int commas[0];
-    -1 => int lastIndexFound;
-    
-    // if has closed parentheses, recalculate location
-    if (sp != -1)
-    {
-        command.find(')') => sp;
-    }
-    else
-    {
-        // if not, use command.length() as proxy value
-        command.length() => sp;
-    }
-    
-    // remove any lagging commas
-    while (command.charAt(sp - 1) == 44)
-    {
-        command.erase(sp - 1, 1);
-        1 -=> sp;
-    }
-    
-    // look through full argument list
-    for(int i; i < sp; i++)
-    {
-        command.find(',', i) => int indexFound;
-        
-        // check index is new, extant, and not trailing
-        if ((indexFound != -1) && (indexFound != lastIndexFound))
-        {
-            // update array
-            commas << command.find(',', i);
-            indexFound => lastIndexFound;
-        }
-    }
-    
-    string arg[0];
-    int numArgs;
-    if (fp != sp - 1)
-    {
-        commas.size() + 1 => numArgs;
-    }
-    
-    // separate each argument according to comma indices
-    for(int i; i < numArgs; i++)
-    {
-        string thisArg;
-        
-        // first argument
-        if (i == 0)
-        {
-            // only argument
-            if (numArgs == 1)
-            {
-                command.substring(fp + 1, sp - fp - 1) => thisArg;
-            }
-            else
-            {
-                command.substring(fp + 1, commas[i] - fp - 1) => thisArg;
-            }
-        }
-        // last argument
-        else if (i == numArgs - 1)
-        {
-            command.substring(commas[i-1] + 1, sp - commas[i-1] - 1) => thisArg;
-        }
-        else
-        {
-            command.substring(commas[i-1] + 1, commas[i] - commas[i-1] - 1) => thisArg;
-        }
-        
-        // validate incoming argument before adding to array
-        if (thisArg == "" || thisArg == ",")
-        {
-            arg << "-";
-        }
-        else
-        {
-            arg << thisArg;
-        }
-        
-        if (thisArg == "subArray")
-        {
-            subArray @=> arg[arg.size() - 1];
-        }
-    }
-    return arg;
-}
-
-// convert sub-array argument into array of ints
-fun int[] intSubArrayParser(string str)
-{
-    argParser("(" + str + ")") @=> string subArgs[];
-    int intArgs[subArgs.size()];
-    
-    for (int i; i < subArgs.size(); i++)
-    {
-        Std.atoi(subArgs[i]) => intArgs[i];
-    }
-    return intArgs;
-}
-
-// convert sub-array argument into array of n floats
-fun float[] floatSubArrayParser(string str, int n, float fallback[])
-{
-    argParser("(" + str + ")") @=> string subArgs[];
-    float floatArgs[subArgs.size()];
-    
-    if (subArgs.size() != n) 
-    {
-        <<<"Incorrect number of sub-array items:", n, "required">>>;
-        return fallback;
-    }
-    
-    for (int i; i < subArgs.size(); i++)
-    {
-        Std.atof(subArgs[i]) => floatArgs[i];
-    }
-    return floatArgs;
-}
-
-// convert string argument to number of seconds (or global T)
-fun dur strToDur(string str, dur fallback)
-{
-    if (str.upper() == "T")
-    {
-        return T;
-    }
-    else if (Std.atof(str) <= 0)
-    {
-        <<<"Argument cannot be converted to a duration!">>>;
-        return fallback;
-    }
-    
-    return Std.atof(str)::second;
-}
-
-// return 0 if argument is real
-fun int skipArg(string str)
-{
-    if (str == "-") return 1;
-    else return 0;
-}
-
-// return 0 if any arguments in array are real
-fun int skipAllArgs(string arg[])
-{
-    for (int i; i < arg.size(); i++)
-    {
-        if (skipArg(arg[i]) == 0) return 0;
-    }
-    return 1;
-}
-
-// convert string argument to int if is a single value
-fun int checkSingleVal(string str)
-{
-    if (str.find(',') != -1)
-    {
-        <<<"Sub-array located where single value should be! Skipping argument">>>;
-        return 0;
-    }
-    return 1;
-}
-
-// print warning if more arguments than mapped parameters
-fun void checkForExtra(string arg[], int max)
-{
-    if (arg.size() > max)
-    {
-        <<<"Warning: function received more arguments than useable">>>;
-    }
-}
-
-// return 0 if array meets minimum size threshold
-fun int checkForMin(string arg[], int min)
-{
-    if (arg.size() < min)
-    {
-        <<<"This function requires at least", min, "arguments">>>;
-        return 1;
-    }
-    return 0;
-}
-
-// return 1 if array is non-null and contains real args
-fun int hasRealArgs(string arg[])
-{
-    if (arg.size() < 1)
-    {
-        <<<"Argument(s) required or function does not exist!">>>;
-        return 0;
-    }
-    else if (skipAllArgs(arg) == 1)
-    {
-        <<<"All arguments have been skipped!">>>;
-        return 0;
-    }
-    return 1;
-}
-
-// parse presets.txt into corresponding command lines
+// fetch command from presets.txt lines
 fun void sendPreset(string command)
 {
+    loadPresets();
+    
     Std.atoi(command) => int p;
-    
-    if (p >= presets.size())
-    {
-        <<<"That preset does not exist!">>>;
-        return;
-    }
-    
     pTok.set(presets[p]);
     
     while (pTok.more())
@@ -474,12 +223,37 @@ fun void sendPreset(string command)
         <<<inst, command>>>;
         commandRouter(inst, command);
     }
+    
+    // make last in OSC queue (i.e. first to print)
+    sendOSC(0, "P", command);
+    presets.clear();
 }
 
-// AA class function & arg parsing
-fun void sendAAEdit(string command)
+// parse presets file into array of commands
+fun void loadPresets()
 {
-    funcParser(command) => string funcName;
+    fio.open(pFile, FileIO.READ);
+    
+    // check file is parseable
+    if (!fio.good())
+    {
+        cherr <= "can't open file: " <= pFile <= " for reading..."
+        <= IO.newline();
+        me.exit();
+    }
+    
+    // send each line of file to array slot
+    while (fio.more())
+    {
+        presets << fio.readLine();
+    }
+}
+
+// AA function & arg parsing
+fun void sendAAEdit(string c)
+{
+    c => string command;
+    ps.funcParser(c) => string funcName;
     
     // functions without arguments
     if (funcName == "help")
@@ -492,27 +266,36 @@ fun void sendAAEdit(string command)
         arp.modeHelp();
         return;
     }
-
+    
     string arg[];
     
     // check function & arguments exist
     if (funcName != "" && command != funcName)
     {
-        argParser(command) @=> arg;
+        ps.argParser(command) @=> arg;
         
-        if (hasRealArgs(arg) == 0) return;
+        if (ps.hasRealArgs(arg) == 0) return;
         
         if (funcName == "algo")
         {
             for (int i; i < arg.size(); i++)
             {
-                if (skipArg(arg[i]) == 0)
+                if (ps.skipArg(arg[i]) == 0)
                 {   
-                    if (i != 5 && checkSingleVal(arg[i]) == 0) return;
+                    if (i != 5 && ps.checkSingleVal(arg[i]) == 0)
+                    {
+                        sendOSC(2, "", "");
+                        return;
+                    }
                     
                     if (i == 0)
                     {
-                        strToDur(arg[0], arp.len) => arp.len;
+                        ps.strToDur(arg[0], T, arp.len) => dur d;
+                        if (d == arp.len)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        d => arp.len;
                     }
                     else if (i == 1)
                     {
@@ -528,16 +311,25 @@ fun void sendAAEdit(string command)
                     }
                     else if (i == 4)
                     {
-                        Std.atoi(arg[4]) => arp.direction;
+                        Std.atoi(arg[4]) => int d;
+                        if (d < 4)
+                        {
+                            d => arp.direction;
+                        }
+                        else
+                        {
+                            <<<"Invalid arp direction: (0) ascending, (1) descending, (2) asc-des, (3) des-asc">>>;
+                            sendOSC(2, "", "");
+                        }
                     }
                     else if (i == 5)
                     {
-                        intSubArrayParser(arg[5]) @=> arp.pitchClasses;
+                        ps.intSubArrayParser(arg[5]) @=> arp.pitchClasses;
                     }
                 }
             }
             
-            checkForExtra(arg, 6);
+            ps.checkForExtra(arg, 6);
         }
         else if (funcName == "mix")
         {
@@ -547,18 +339,44 @@ fun void sendAAEdit(string command)
         {
             Std.atof(arg[0]) => arp.g;
         }
+        else if (funcName == "changeosc")
+        {
+            arg[0].lower() => arg[0];
+            if (arg[0] == "tri" || arg[0] == "sin" || arg[0] == "sqr")
+            {
+                arg[0] => arpOsc;
+            }
+            else
+            {
+                <<<"Invalid osc type; valid choices: tri, sin, sqr">>>;
+            }
+        }
         else if (funcName == "mode")
         {
-            if (checkForMin(arg, 2) == 1) return;
+            if (ps.checkForMin(arg, 2) == 1)
+            {
+                sendOSC(2, "", "");
+                return;
+            }
             
-            if (skipArg(arg[0]) == 0)
+            arg[0].lower();
+            Std.atoi(arg[1]) => int n;
+            
+            if ((arg[0].charAt(0) == 'd' && n > 7) || (n > 12))
+            {
+                <<<"Invalid scale number: (1-7) diatonic, (1-12) Ethiopian qenet">>>;
+                sendOSC(2, "", "");
+                return;
+            }
+            
+            if (ps.skipArg(arg[0]) == 0)
             {
                 arg[0] => arp.scaleType;
             }
             
-            if (skipArg(arg[1]) == 0)
+            if (ps.skipArg(arg[1]) == 0)
             {
-                Std.atoi(arg[1]) => arp.scaleNum;
+                n => arp.scaleNum;
             }
         }
         else if (funcName == "tonic")
@@ -570,12 +388,17 @@ fun void sendAAEdit(string command)
             <<<"AA cannot find that function">>>;
         }
     }
+    else 
+    {
+        sendOSC(2, "", "");
+    }
 }
 
-// BB class function & arg parsing
-fun void sendBBEdit(string command)
+// BB function & arg parsing
+fun void sendBBEdit(string c)
 {
-    funcParser(command) => string funcName;
+    c => string command;
+    ps.funcParser(c) => string funcName;
     
     // functions without arguments
     if (funcName == "help")
@@ -594,21 +417,30 @@ fun void sendBBEdit(string command)
     // check function & arguments exist
     if (funcName != "" && command != funcName)
     {
-        argParser(command) @=> arg;
+        ps.argParser(command) @=> arg;
         
-        if (hasRealArgs(arg) == 0) return;
+        if (ps.hasRealArgs(arg) == 0) return;
         
         if (funcName == "algo")
         {   
             for (int i; i < arg.size(); i++)
             {
-                if (skipArg(arg[i]) == 0)
+                if (ps.skipArg(arg[i]) == 0)
                 {
-                    if (i != 3 && checkSingleVal(arg[i]) == 0) return;
+                    if (i != 3 && ps.checkSingleVal(arg[i]) == 0)
+                    {
+                        sendOSC(2, "", "");
+                        return;
+                    }
                     
                     if (i == 0)
                     {
-                        strToDur(arg[0], bass.len) => bass.len;
+                        ps.strToDur(arg[0], T, bass.len) => dur d;
+                        if (d == bass.len)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        d => bass.len;
                     }
                     else if (i == 1)
                     {
@@ -620,7 +452,7 @@ fun void sendBBEdit(string command)
                     }
                     else if (i == 3)
                     {
-                        intSubArrayParser(arg[3]) @=> bass.pitchClasses;
+                        ps.intSubArrayParser(arg[3]) @=> bass.pitchClasses;
                     }
                     else if (i == 4)
                     {
@@ -629,7 +461,7 @@ fun void sendBBEdit(string command)
                 }
             }
             
-            checkForExtra(arg, 5);
+            ps.checkForExtra(arg, 5);
         }
         else if (funcName == "mix")
         {
@@ -639,18 +471,44 @@ fun void sendBBEdit(string command)
         {
             Std.atof(arg[0]) => bass.g;
         }
+        else if (funcName == "changeosc")
+        {
+            arg[0].lower() => arg[0];
+            if (arg[0] == "tri" || arg[0] == "sin" || arg[0] == "sqr")
+            {
+                arg[0] => bassOsc;
+            }
+            else
+            {
+                <<<"Invalid osc type; valid choices: tri, sin, sqr">>>;
+            }
+        }
         else if (funcName == "mode")
         {
-            if (checkForMin(arg, 2) == 1) return;
+            if (ps.checkForMin(arg, 2) == 1)
+            {
+                sendOSC(2, "", "");
+                return;
+            }
             
-            if (skipArg(arg[0]) == 0)
+            arg[0].lower();
+            Std.atoi(arg[1]) => int n;
+            
+            if ((arg[0].charAt(0) == 'd' && n > 7) || (n > 12))
+            {
+                <<<"Invalid scale number: (1-7) diatonic, (1-12) Ethiopian qenet">>>;
+                sendOSC(2, "", "");
+                return;
+            }
+            
+            if (ps.skipArg(arg[0]) == 0)
             {
                 arg[0] => bass.scaleType;
             }
             
-            if (skipArg(arg[1]) == 0)
+            if (ps.skipArg(arg[1]) == 0)
             {
-                Std.atoi(arg[1]) => bass.scaleNum;
+                n => bass.scaleNum;
             }
         }
         else if (funcName == "tonic")
@@ -662,127 +520,17 @@ fun void sendBBEdit(string command)
             <<<"BB cannot find that function">>>;
         }
     }
-}
-    
-// CC class function & arg parsing 
-fun void sendCCEdit(string command)
-{
-    funcParser(command) => string funcName;
-    
-    // functions without arguments
-    if (funcName == "help")
+    else 
     {
-        clap.help();
-        return;
-    }
-    
-    string arg[];
-    
-    // check function & arguments exist
-    if (funcName != "" && command != funcName)
-    {
-        argParser(command) @=> arg;
-        
-        if (arg.size() < 1)
-        {
-            <<<"Argument(s) required or function does not exist!">>>;
-            return;
-        }
-        else if (skipAllArgs(arg) == 1)
-        {
-            // allow lack of arguments when switching between algo and randomStyle
-            if ((funcName == "algo" && clapRandomOn == 0) ||
-            (funcName == "randomstyle" && clapRandomOn == 1) ||
-            (funcName == "gain") ||
-            (funcName == "mix"))
-            {
-                <<<"All arguments have been skipped!">>>;
-                return;
-            }
-        }
-        
-        if (funcName == "algo")
-        {   
-            for (int i; i < arg.size(); i++)
-            {
-                if (skipArg(arg[i]) == 0)
-                {
-                    if (i != 3 && checkSingleVal(arg[i]) == 0) return;
-                    
-                    if (i == 0)
-                    {
-                        strToDur(arg[0], clap.len) => clap.len;
-                    }
-                    else if (i == 1)
-                    {
-                        Std.atoi(arg[1]) => clap.beats;
-                    }
-                    else if (i == 2)
-                    {
-                        if (arg[2] == "backbeat" || arg[2] == "doubletime" || arg[2] == "sync")
-                        {
-                            arg[2] => clap.style;
-                        }
-                        else
-                        {
-                            <<<"Invalid CC style; valid choices: backbeat, doubletime, sync">>>;
-                        }
-                    }
-                    else if (i == 3)
-                    {
-                        floatSubArrayParser(arg[3], 4, clap.splits) @=> clap.splits;
-                    }
-                }
-            }
-            
-            checkForExtra(arg, 4);
-        }
-        else if (funcName == "randomstyle")
-        {
-            1 => clapRandomOn;
-            
-            for (int i; i < arg.size(); i++)
-            {
-                if (skipArg(arg[i]) == 0)
-                {
-                    if (checkSingleVal(arg[i]) == 0) return;
-                    
-                    if (i == 0)
-                    {
-                        strToDur(arg[0], kick.len) => clap.len;
-                    }
-                    else if (i == 1)
-                    {
-                        Std.atoi(arg[1]) => clap.beats;
-                    }
-                    else if (i == 2)
-                    {
-                        Std.atoi(arg[2]) => clap.reps;
-                    }
-                }
-            } 
-            
-            checkForExtra(arg, 3);
-        }
-        else if (funcName == "mix")
-        {
-            Std.atof(arg[0]) => clap.rev;
-        }
-        else if (funcName == "gain")
-        {
-            Std.atof(arg[0]) => clapGain;
-        }
-        else
-        {
-            <<<"CC cannot find that function">>>;
-        }
+        sendOSC(2, "", "");
     }
 }
-    
-// HH class function & arg parsing
-fun void sendHHEdit(string command)
+
+// HH function & arg parsing
+fun void sendHHEdit(string c)
 {
-    funcParser(command) => string funcName;
+    c => string command;
+    ps.funcParser(c) => string funcName;
     
     // functions without arguments
     if (funcName == "help")
@@ -796,21 +544,30 @@ fun void sendHHEdit(string command)
     // check function & arguments exist
     if (funcName != "" && command != funcName)
     {
-        argParser(command) @=> arg;
+        ps.argParser(command) @=> arg;
         
-        if (hasRealArgs(arg) == 0) return;
-    
+        if (ps.hasRealArgs(arg) == 0) return;
+        
         if (funcName == "algo")
         {
             for (int i; i < arg.size(); i++)
             {
-                if (skipArg(arg[i]) == 0)
+                if (ps.skipArg(arg[i]) == 0)
                 {
-                    if (i != 3 && checkSingleVal(arg[i]) == 0) return;
+                    if (i != 3 && ps.checkSingleVal(arg[i]) == 0)
+                    {
+                        sendOSC(2, "", "");
+                        return;
+                    }
                     
                     if (i == 0)
                     {
-                        strToDur(arg[0], hihat.len) => hihat.len;
+                        ps.strToDur(arg[0], T, hihat.len) => dur d;
+                        if (d == hihat.len)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        d => hihat.len;
                     }
                     else if (i == 1)
                     {
@@ -818,41 +575,75 @@ fun void sendHHEdit(string command)
                     }
                     else if (i == 2)
                     {
-                        Std.atoi(arg[2]) => hihat.triplets;
+                        Std.atof(arg[2]) => hihat.triplets;
                     }
                     else if (i == 3)
                     {
-                        floatSubArrayParser(arg[3], 5, hihat.splits) @=> hihat.splits;
+                        ps.floatSubArrayParser(arg[3], 5, hihat.splits) @=> float sp[];
+                        if (sp == hihat.splits)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        sp @=> hihat.splits;
                     }
                 }
             }
             
-            checkForExtra(arg, 4);
+            ps.checkForExtra(arg, 4);
         }
         else if (funcName == "mix")
         {
             Std.atof(arg[0]) => hihat.rev;
+            ps.checkForExtra(arg, 1);
         }
         else if (funcName == "gain")
         {
             Std.atof(arg[0]) => hhGain;
+            ps.checkForExtra(arg, 1);
+        }
+        else if (funcName == "changefile")
+        {
+            // test file exists
+            sampleChecker.open(me.dir() + arg[0], FileIO.READ);
+            if (sampleChecker.good())
+            {
+                arg[0] => hhSamp;
+            }
+            else 
+            {
+                <<<"Cannot open file", arg[0]>>>;
+                sendOSC(2, "", "");
+            }
         }
         else
         {
             <<<"HH cannot find that function">>>;
         }
     }
+    else 
+    {
+        sendOSC(2, "", "");
+    }
 }
 
-// KK class function & arg parsing
-fun void sendKKEdit(string command)
+// CC and KK joint function & arg parsing
+fun void sendRanDrumEdit(RanDrum u, string c)
 {
-    funcParser(command) => string funcName;
+    c => string command;
+    ps.funcParser(c) => string funcName;
     
     // functions without arguments
     if (funcName == "help")
     {
-        kick.help();
+        // TO DO: how to properly overwrite object help()?
+        if (u.id == "kk")
+        {
+            kick.help();
+        }
+        else 
+        {
+            clap.help();
+        }
         return;
     }
     
@@ -861,102 +652,176 @@ fun void sendKKEdit(string command)
     // check function & arguments exist
     if (funcName != "" && command != funcName)
     {
-        argParser(command) @=> arg;
+        ps.argParser(command) @=> arg;
         
         if (arg.size() < 1)
         {
             <<<"Argument(s) required or function does not exist!">>>;
+            sendOSC(2, "", "");
             return;
         }
-        else if (skipAllArgs(arg) == 1)
+        else if (ps.skipAllArgs(arg) == 1)
         {
             // allow lack of arguments when switching between algo and randomStyle
-            if ((funcName == "algo" && kickRandomOn == 0) ||
-                (funcName == "randomstyle" && kickRandomOn == 1) ||
-                (funcName == "gain") ||
-                (funcName == "mix"))
+            if ((funcName == "algo" && u.randomOn == 0) ||
+            (funcName == "randomstyle" && u.randomOn == 1) ||
+            (funcName == "gain") ||
+            (funcName == "mix"))
             {
                 <<<"All arguments have been skipped!">>>;
                 return;
             }
         }
-    
+        
         if (funcName == "algo")
         {
-            0 => kickRandomOn;
-        
+            0 => u.randomOn;
+            
             for (int i; i < arg.size(); i++)
             {
-                if (skipArg(arg[i]) == 0)
+                if (ps.skipArg(arg[i]) == 0)
                 {
-                    if (i != 3 && checkSingleVal(arg[i]) == 0) return;
+                    if (i != 3 && ps.checkSingleVal(arg[i]) == 0)
+                    {
+                        sendOSC(2, "", "");
+                        return;
+                    }
                     
                     if (i == 0)
                     {
-                        strToDur(arg[0], kick.len) => kick.len;
+                        ps.strToDur(arg[0], T, u.len) => dur d;
+                        if (d == u.len)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        d => u.len;
                     }
                     else if (i == 1)
                     {
-                        Std.atoi(arg[1]) => kick.beats;
+                        Std.atoi(arg[1]) => u.beats;
                     }
                     else if (i == 2)
                     {
-                        if (arg[2] == "club" || arg[2] == "rock" || arg[2] == "sync")
+                        if (u.id == "kk" && checkKKStyles(arg[2]) != "")
                         {
-                            arg[2] => kick.style;
+                            arg[2] => u.style;
                         }
-                        else
+                        else if (u.id == "cc" && checkCCStyles(arg[2]) != "")
                         {
-                            <<<"Invalid KK style; valid choices: club, rock, sync">>>;
+                            arg[2] => u.style;
                         }
                     }
                     else if (i == 3)
                     {
-                        floatSubArrayParser(arg[3], 4, kick.splits) @=> kick.splits;
+                        ps.floatSubArrayParser(arg[3], 4, u.splits) @=> float sp[];
+                        if (sp == u.splits)
+                        {
+                            sendOSC(2, "", "");
+                        }
+                        sp @=> u.splits;
                     }
                 }
             }
             
-            checkForExtra(arg, 4);
+            ps.checkForExtra(arg, 4);
         }
         else if (funcName == "randomstyle")
         {
-            1 => kickRandomOn;
+            1 => u.randomOn;
             
             for (int i; i < arg.size(); i++)
             {
-                if (skipArg(arg[i]) == 0)
+                if (ps.skipArg(arg[i]) == 0)
                 {
-                    if (checkSingleVal(arg[i]) == 0) return;
+                    if (ps.checkSingleVal(arg[i]) == 0)
+                    {
+                        sendOSC(2, "", "");
+                        return;
+                    }
                     
                     if (i == 0)
                     {
-                        strToDur(arg[0], kick.len) => kick.len;
+                        ps.strToDur(arg[0], T, u.len) => u.len;
                     }
                     else if (i == 1)
                     {
-                        Std.atoi(arg[1]) => kick.beats;
+                        Std.atoi(arg[1]) => u.beats;
                     }
                     else if (i == 2)
                     {
-                        Std.atoi(arg[2]) => kick.reps;
+                        Std.atoi(arg[2]) => u.reps;
                     }
                 }
             }  
             
-            checkForExtra(arg, 3);
+            ps.checkForExtra(arg, 3);
         }
         else if (funcName == "mix")
         {
-            Std.atof(arg[0]) => kick.rev;
+            Std.atof(arg[0]) => u.rev;
         }
         else if (funcName == "gain")
         {
-            Std.atof(arg[0]) => kickGain;
+            Std.atof(arg[0]) => u.tempGain;
+        }
+        else if (funcName == "changefile")
+        {
+            // test file exists
+            sampleChecker.open(me.dir() + arg[0], FileIO.READ);
+            if (sampleChecker.good())
+            {
+                arg[0] => u.tempSample;
+            }
+            else 
+            {
+                <<<"Cannot open file", arg[0]>>>;
+                sendOSC(2, "", "");
+            }
         }
         else
         {
-            <<<"KK cannot find that function">>>;
+            <<<"Function not found">>>;
         }
     }
+    else 
+    {
+        sendOSC(2, "", "");
+    }
 }
+    
+// validate style argument for CC
+fun string checkCCStyles(string s)
+{
+    if (s == "sync" || s == "doubletime" || s == "backbeat")
+    {
+        return s;
+    }
+    else
+    {
+        <<<"Invalid CC style; valid choices: backbeat, doubletime, sync">>>;
+        sendOSC(2, "", "");
+        return "";
+    }
+}
+
+// validate style argument for KK
+fun string checkKKStyles(string s)
+{
+    if (s == "club" || s == "rock" || s == "sync")
+    {
+        return s;
+    }
+    else
+    {
+        <<<"Invalid KK style; valid choices: club, rock, sync">>>;
+        sendOSC(2, "", "");
+        return "";
+    }
+}
+
+// convert duration to string # of samples
+fun string durToString(dur d) 
+{
+    return "" + ((d / (1::samp)));
+}
+

@@ -4,21 +4,23 @@
 // gain: set buffer gain level
 // mix: set reverb mix level
 // connect: attach to specified ugen
+// changeFile: read new file as the instrument sample
 // help: print function & arg explanations
 // trigger: [private] play sample at specified dur & gain
-// algo(dur T, int x, int triplets, float splits[5]);
+// algo(dur T, int x, float triplets, float splits[5]);
 
 public class HH
 {
     SndBuf hBuf => NRev hn;
-    me.dir() + "808_Hat_Closed.wav" => hBuf.read;
+    "808_Hat_Closed.wav" => string sample;
+    me.dir() + sample => hBuf.read;
 
     // default settings
-    0.5 => float g; 
+    0.5 => float g;
     0.02 => float rev;
     0.8::second => dur len;
     4 => int beats;
-    Math.random2(0,1) => int triplets;
+    0.5 => float triplets;
     [0.1, 0.6, 0.1, 0.6, 0.8] @=> float splits[];
     
     g => hBuf.gain;
@@ -39,15 +41,27 @@ public class HH
         hn => ugen; 
     }
     
+    public void changeFile(string str)
+    {
+        
+        if (str != sample)
+        {
+            me.dir() + str => hBuf.read;
+        }
+        
+        str => sample;
+    }
+    
     public void help()
     {
         <<<"HH has the following functions:">>>;
         <<<"gain(float): sets gain">>>;
         <<<"mix(float): sets reverb level">>>;
         <<<"connect(UGen): connects HH to other Chuck UGens">>>;
+        <<<"changeFile(string): reads new file as instrument sample">>>;
         <<<"algo(dur T, int x, int triplets, float splits[5])">>>;
         <<<"Generate x beats (dur T) of mixed triplet and straight rhythms">>>;
-        <<<"Triplets: 1 = triplet 8ths, 0 = straight 8ths, 16ths, & 32nds">>>;
+        <<<"Triplets: probability of rolling triplet 8ths vs. straight 8ths, 16ths, & 32nds">>>;
         <<<"Splits: 1st two are for 1st half of beat, next three are for 2nd half">>>;
         <<<"1st half: 8th, 16 16, or 32 32 16; 2nd half: 8th, 16 16, 32 32 16, or 32 32 32 32">>>;
         <<<"e.g. 1st half = splits 0.1, 0.6 --> 10% 8th, 50% 16 16, 40% 32 32 16">>>;
@@ -62,9 +76,9 @@ public class HH
     
     // T: length of one beat
     // beats: how many beats in a measure
-    // triplets: 0 = no triplets, 1 = triplets
+    // triplets: probability of triplets occurring (where 1 = always)
     // splits: split between different rhythms
-    public void algo(dur T, int beats, int triplets, float splits[])
+    public void algo(dur T, int beats, float triplets, float splits[])
     {
         // for each beat in bar
         0 => int j;
@@ -79,9 +93,10 @@ public class HH
             }
             
             // choose between triplets vs. n8/n16/n32
+            Math.randomf() => float roll;
             1.0 / 6.0 => float t;
             
-            if (triplets == 1)
+            if (roll < triplets)
             {
                 for (int k; k < 6; k++)
                 {

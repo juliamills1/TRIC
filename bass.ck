@@ -5,6 +5,7 @@
 // mix: set reverb mix level
 // mode: set scale type (diatonic vs. Ethiopian) and number
 // connect: attach to specified ugen
+// changeOsc: set oscillator used (sine, triangle, or square)
 // help: print function & arg explanations
 // modeHelp: print list of available modes
 // fadeGain: [private] interpolate between given gain values
@@ -13,7 +14,10 @@
 
 public class BB
 {
-    TriOsc s => JCRev j;
+    Gain internal => JCRev j;
+    SinOsc s; 
+    TriOsc t;
+    SqrOsc q;
     
     // diatonic modes
     [0, 2, 4, 7, 9] @=> int major[];
@@ -49,15 +53,18 @@ public class BB
     1 => int addOctaves;
     "d" => string scaleType;
     1 => int scaleNum;
+    "tri" => string osc;
     
-    g => s.gain;
+    // instantiate routing
+    t => internal;
+    g => t.gain => s.gain => q.gain;
     rev => j.mix;
     
     public void gain(float gIn)
     {
-        if (Math.fabs(gIn - s.gain()) > 0.05)
+        if (Math.fabs(gIn - internal.gain()) > 0.001)
         {
-            spork ~ fadeGain(s.gain(), gIn);
+            spork ~ fadeGain(internal, gIn);
         }
     }
     
@@ -71,7 +78,7 @@ public class BB
     
     public void mode(string t, int m)
     {
-        t => scaleType;
+        t.lower() => scaleType;
         m => scaleNum;
         
         if (t == "d" || t == "dia")
@@ -89,13 +96,43 @@ public class BB
         j => ugen; 
     }
     
+    public void changeOsc(string str)
+    {
+        str.lower() => str;
+        
+        if (str != osc)
+        {
+            if (str == "tri")
+            {
+                t => internal;
+                s =< internal;
+                q =< internal;
+            }
+            else if (str == "sin")
+            {
+                t =< internal;
+                s => internal;
+                q =< internal;
+            }
+            else if (str == "sqr")
+            {
+                t =< internal;
+                s =< internal;
+                q => internal;
+            }
+        }
+        
+        str => osc;
+    }
+    
     public void help()
     {
         <<<"BB has the following functions:">>>;
         <<<"gain(float): sets gain">>>;
         <<<"mix(float): sets reverb level">>>;
         <<<"mode(string, int): set scale type (diatonic vs. Ethiopian) and number">>>;
-        <<<"connect(UGen): connects AA to other Chuck UGens">>>;
+        <<<"connect(UGen): connects BB to other Chuck UGens">>>;
+        <<<"changeOsc: set oscillator used (sin, tri, or sqr)">>>;
         <<<"algo(dur T, int x, int tonic, int pitchClasses[], int addOctaves)">>>;
         <<<"Mix of x syncopated and straight beats (dur T); tonic = MIDI number">>>;
         <<<"Additional octaves: 1 = all pitch classes can be +12 MIDI notes up from tonic">>>;
@@ -109,12 +146,12 @@ public class BB
         <<<"           (8) yematebela wofe, (9) shegaye, (10) bati lydian, (11) bati minor w/ raised 4th, (12) bati major w/ raised 5th">>>;
     }
     
-    private void fadeGain(float start, float target)
+    private void fadeGain(UGen u, float target)
     {
-        for (1 => int i; i <= 20; i++)
+        for (1 => int i; i <= 100; i++)
         {
-            start + ((i / 20.0) * (target - start)) => g => s.gain;
-            5::ms => now;
+            u.gain() + ((i / 100.0) * (target - u.gain())) => g => u.gain;
+            ms => now;
         }
     }
     
@@ -123,7 +160,7 @@ public class BB
         for (1 => int i; i <= 100; i++)
         {
             start + ((i / 100.0) * (target - start)) => rev => j.mix;
-            1::ms => now;
+            ms => now;
         }
     }
     
@@ -153,7 +190,7 @@ public class BB
         for (int i; i < sync; i++)
         {
             scale[0] => freq;    
-            Std.mtof(tonic) => s.freq;
+            Std.mtof(tonic) => s.freq => t.freq => q.freq;
             
             // 1st n4d of bar: n4d or n8d n8d
             if (Math.randomf() < 0.2) 
@@ -164,13 +201,13 @@ public class BB
             {
                 0.75::T => now;
                 scale[ Math.random2(0,numPitches) ] => freq;  
-                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq;
+                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq => t.freq => q.freq;
                 0.75::T => now;
             }
             
             // 2nd n4d of bar: n4d or n8d n8d
             scale[ Math.random2(0,numPitches) ] => freq; 
-            Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq;
+            Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq => t.freq => q.freq;
             
             if (Math.randomf() < 0.15) 
             {
@@ -180,7 +217,7 @@ public class BB
             {
                 0.75::T => now;
                 scale[ Math.random2(0,numPitches) ] => freq;  
-                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq;
+                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq => t.freq => q.freq;
                 0.75::T => now;
             }
         }
@@ -190,7 +227,7 @@ public class BB
             if (straight == 3 && j == 0)
             {
                 scale[0] => freq;    
-                Std.mtof(tonic) => s.freq;
+                Std.mtof(tonic) => s.freq => t.freq => q.freq;
             }
             else
             {
@@ -198,7 +235,7 @@ public class BB
                 {
                     scale[ Math.random2(1,numPitches) ] => freq;   
                 }   
-                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq;
+                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq => t.freq => q.freq;
             }
             
             if (Math.randomf() < 0.6) 
@@ -212,7 +249,7 @@ public class BB
                 {
                     scale[ Math.random2(1,numPitches) ] => freq;   
                 }  
-                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq;
+                Std.mtof( tonic + (Math.random2(0,octaves)*12 + freq) ) => s.freq => t.freq => q.freq;
                 0.5::T => now;
             }
         }

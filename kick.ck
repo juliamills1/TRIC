@@ -4,28 +4,31 @@
 // gain: set buffer gain level
 // mix: set reverb mix level
 // connect: attach to specified ugen
+// changeFile: read new file as the instrument sample
 // help: print function & arg explanations
 // trigger: [private] play sample at specified dur & gain
 // constrainedRandom: [private] don't randomize gain when gain <= 0
 // randomStyle: switch between different styles every X reps
 // algo(dur T, int x, string style, float splits[4])
 
-public class KK
+public class KK extends RanDrum
 {
     SndBuf kBuf => NRev kn;
-    me.dir() + "808_Kick_Long.wav" => kBuf.read;
+    "808_Kick_Long.wav" => sample => tempSample;
+    me.dir() + sample => kBuf.read;
     
     // default settings
-    0.5 => float g; 
-    0.02 => float rev;
-    0.8::second => dur len;
-    4 => int beats;
-    "club" => string style;
-    [0.8, 0.6, 0.5, 0.75] @=> float splits[];
-    2 => int reps;
-    
-    0 => int currentRep;
-    0 => int styleNum;
+    "kk" => id;
+    0.5 => g => tempGain;
+    0.02 => rev;
+    0.8::second => len;
+    4 => beats;
+    "club" => style;
+    [0.8, 0.6, 0.5, 0.75] @=> splits;
+    2 => reps;
+    0 => currentRep;
+    0 => styleNum;
+    0 => randomOn;
     
     g => kBuf.gain;
     rev => kn.mix;
@@ -45,12 +48,23 @@ public class KK
         kn => ugen; 
     }
     
+    public void changeFile(string str)
+    {
+        if (str != sample)
+        {
+            me.dir() + str => kBuf.read;
+        }
+        
+        str => sample;
+    }
+    
     public void help()
     {
         <<<"KK has the following functions:">>>;
         <<<"gain(float): sets gain">>>;
         <<<"mix(float): sets reverb level">>>;
         <<<"connect(UGen): connects CC to other Chuck UGens">>>;
+        <<<"changeFile(string): reads new file as instrument sample">>>;
         <<<"randomStyle(dur, int, int y): randomly re-pick a style every y measures">>>;
         <<<"algo(dur T, int x, string style, float splits[4])">>>;
         <<<"Generate x beats of dur T in specified style: club, rock, or sync">>>;

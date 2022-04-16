@@ -5,6 +5,7 @@
 // mix: set reverb mix level
 // mode: set scale type (diatonic vs. Ethiopian) and number
 // connect: attach to specified ugen
+// changeOsc: set oscillator used (sine, triangle, or square)
 // help: print function & arg explanations
 // modeHelp: print list of available modes
 // fadeGain: [private] interpolate between given gain values
@@ -14,7 +15,10 @@
 
 public class AA
 {
-    SinOsc s => JCRev j;
+    Gain internal => JCRev j;
+    SinOsc s; 
+    TriOsc t;
+    SqrOsc q;
     
     // diatonic sevenths/modes
     [0, 4, 7, 11] @=> int majSev[];
@@ -46,15 +50,18 @@ public class AA
     majSev @=> int pitchClasses[];
     "d" => string scaleType;
     1 => int scaleNum;
-    
-    g => s.gain;
+    "sin" => string osc;
+
+    // instantiate routing
+    s => internal;
+    g => t.gain => s.gain => q.gain;
     rev => j.mix;
-    
+
     public void gain(float gIn)
     {
-        if (Math.fabs(gIn - s.gain()) > 0.05)
+        if (Math.fabs(gIn - internal.gain()) > 0.001)
         {
-            spork ~ fadeGain(s.gain(), gIn);
+            spork ~ fadeGain(internal, gIn);
         }
     }
     
@@ -68,7 +75,7 @@ public class AA
     
     public void mode(string t, int m)
     {
-        t => scaleType;
+        t.lower() => scaleType;
         m => scaleNum;
         
         if (t == "d" || t == "dia")
@@ -86,6 +93,35 @@ public class AA
         j => ugen; 
     }
     
+    public void changeOsc(string str)
+    {
+        str.lower() => str;
+        
+        if (str != osc)
+        {
+            if (str == "tri")
+            {
+                t => internal;
+                s =< internal;
+                q =< internal;
+            }
+            else if (str == "sin")
+            {
+                t =< internal;
+                s => internal;
+                q =< internal;
+            }
+            else if (str == "sqr")
+            {
+                t =< internal;
+                s =< internal;
+                q => internal;
+            }
+        }
+        
+        str => osc;
+    }
+    
     public void help()
     {
         <<<"AA has the following functions:">>>;
@@ -93,6 +129,7 @@ public class AA
         <<<"mix(float): sets reverb level">>>;
         <<<"mode(string, int): set scale type (diatonic vs. Ethiopian) and number">>>;
         <<<"connect(UGen): connects AA to other Chuck UGens">>>;
+        <<<"changeOsc: set oscillator used (sin, tri, or sqr)">>>;
         <<<"algo(dur T, int x, int tonic, int cycleLength, int direction, int pitchClasses[])">>>;
         <<<"0.25 * T constant rhythm arpeggio for x beats; tonic = MIDI number">>>;
         <<<"If cycle length > # of pitch classes, an octave above will be added">>>;
@@ -107,12 +144,12 @@ public class AA
         <<<"           (8) yematebela wofe, (9) shegaye, (10) bati lydian, (11) bati minor w/ raised 4th, (12) bati major w/ raised 5th">>>;
     }
     
-    private void fadeGain(float start, float target)
+    private void fadeGain(UGen u, float target)
     {
-        for (1 => int i; i <= 20; i++)
+        for (1 => int i; i <= 100; i++)
         {
-            start + ((i / 20.0) * (target - start)) => g => s.gain;
-            5::ms => now;
+            u.gain() + ((i / 100.0) * (target - u.gain())) => g => u.gain;
+            ms => now;
         }
     }
     
@@ -121,7 +158,7 @@ public class AA
         for (1 => int i; i <= 100; i++)
         {
             start + ((i / 100.0) * (target - start)) => rev => j.mix;
-            1::ms => now;
+            ms => now;
         }
     }
     
@@ -169,7 +206,7 @@ public class AA
                 }
             }
             
-            Std.mtof(tonic + calcPitchClass(i, scale, cycleLength, dir)) => s.freq;
+            Std.mtof(tonic + calcPitchClass(i, scale, cycleLength, dir)) => s.freq => t.freq => q.freq;
             0.25::T => now;
         }
     }
