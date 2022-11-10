@@ -1,5 +1,5 @@
-<h1>Terminal-Responsive Instrument Classes</i></h1>
-<h3> An ensemble of instruments that work with a wide range of user specification</h3>
+<h1>Terminal-Responsive Instrument Classes</h1>
+<h3>Live algorithmic composition ensemble</h3>
 
 From the moment the user runs the program,
         there is a randomized beat that they can then change live. At their
@@ -50,17 +50,15 @@ NOTE: the way it is currently set up in Chuck, the duration and number of beats 
 To run TRIC audio, use <code>chuck tri.ck</code>. To run the conscience log,
 use <code>chuck conscience.ck</code> in another terminal.
 
-For demos and more, visit <href>https://ccrma.stanford.edu/~jjmills/220b/final/index.html</href>
+For demos and more, visit the <a href="https://ccrma.stanford.edu/~jjmills/Repo/TRIC.html">project webpage</a>
 
 -------------
-<h3>Slated feature requests</h3>
+<h3>Slated feature additions</h3>
 <li>Output state changes to .txt</li>
 <li>Poly synth stab instrument</li>
 <li>Improve terminal.ck efficiency</li>
 <li>All classes extending tricClass parent</li>
 <li>Loop independence from kick loop length</li>
-<li>Add lilypond rhythm input mode: a separate function from algo() for all
-    instruments in which lilypond notation is parsed as rhythmic input (e.g. n4d
-    n4d r4 = two dotted quarter notes and a quarter rest); would allow for switching
-    between algo() and tutti sections</li>
+<li>Add lilypond rhythm input mode, a separate function from algo() for all
+    instruments; would allow for switching between algo() and tutti sections</li>
 <li>Infrastructure for multiple AA instantiations created on the fly</li>
